@@ -35,11 +35,18 @@ FUNCTION_MAP = {
     "SUM": "sum",
 }
 
+def normalize_comparisons(expr: str) -> str:
+    # Excel: <>  -> Python: !=
+    expr = expr.replace("<>", "!=")
+    # Excel: =   -> Python: ==  (только одиночный "=", не трогая <= >= ==)
+    expr = re.sub(r'(?<![<>=])=(?![<>=])', '==', expr)
+    return expr
 
 def parse_formula(formula: str) -> ParsedFormula:
     expr = formula.lstrip("=")
     expr = expr.replace(";", ",")
     expr = expr.replace("^", "**")
+    expr = normalize_comparisons(expr)
 
     dependencies: Set[str] = set()
 
