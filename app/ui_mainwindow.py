@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QFileDialog,
+    QScrollArea,
 )
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -161,11 +162,19 @@ class MainWindow(QMainWindow):
         self._refresh_recent_menu()
 
     def _build_layout(self) -> None:
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.addWidget(self._build_inputs_panel())
-        splitter.addWidget(self._build_outputs_panel())
-        splitter.setStretchFactor(1, 2)
-        self.setCentralWidget(splitter)
+    splitter = QSplitter(Qt.Horizontal)
+
+    # Левая панель (ввод) -> в ScrollArea
+    inputs_widget = self._build_inputs_panel()
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setWidget(inputs_widget)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # необязательно, но удобно
+
+    splitter.addWidget(scroll)
+    splitter.addWidget(self._build_outputs_panel())
+    splitter.setStretchFactor(1, 2)
+    self.setCentralWidget(splitter)
 
     def _build_inputs_panel(self) -> QWidget:
         container = QWidget()
