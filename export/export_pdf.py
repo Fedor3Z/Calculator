@@ -52,8 +52,8 @@ def _convert_xlsx_to_pdf(xlsx_path: Path, out_pdf_path: Path) -> None:
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(
-            "Ошибка конвертации XLSX→PDF через LibreOffice.
-" + (proc.stderr or proc.stdout)
+            "Ошибка конвертации XLSX→PDF через LibreOffice.\n"
+            + (proc.stderr or proc.stdout)
         )
 
     produced = out_dir / (xlsx_path.stem + ".pdf")
