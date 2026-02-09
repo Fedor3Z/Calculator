@@ -39,27 +39,20 @@ class Optimizer:
     def optimize(self, values: Dict[str, float]) -> OptimizationResult:
         initial = np.array([values[var] for var in self.variables], dtype=float)
         history = OptimizationHistory()
-        strict_result = self._run_optimization(initial, values, history, soft=False)
-        if strict_result.success:
-            strict_result.stage = "strict"
-            return strict_result
-        soft_history = OptimizationHistory()
-        soft_result = self._run_optimization(initial, values, soft_history, soft=True)
-        soft_result.stage = "soft"
-        return soft_result
+        result = self._run_optimization(initial, values, history)
+        result.stage = "strict"
+        return result
 
     def _run_optimization(
         self,
         initial: np.ndarray,
         base_values: Dict[str, float],
         history: OptimizationHistory,
-        soft: bool,
     ) -> OptimizationResult:
         bounds = self._build_bounds(base_values)
-        constraints = self._build_constraints(base_values, soft=soft)
+        constraints = self._build_constraints(base_values)
     
-        # Порог допустимости: strict = 1e-4, soft = 5%
-        tol = 0.05 if soft else 0.0001
+        STRICT_TOL = 1e-4  # только "green" (без 5%)
     
         best_values: Dict[str, float] | None = None
         best_obj: float = float("inf")
@@ -71,15 +64,9 @@ class Optimizer:
         def objective(x: np.ndarray) -> float:
             current = self._update_values(base_values, x)
             result = self.engine.compute(current)
-            value = float(result.key_outputs["J204"])
-            penalty = 0.0
-            if soft:
-                penalties, _ = self._constraint_violations(current)
-                # штрафуем нарушения квадратично
-                penalty = sum(1000.0 * v**2 for v in penalties.values())
-            return value + penalty
+            return float(result.key_outputs["J204"])
     
-        def callback(x: np.ndarray) -> None:
+        def record_point(x: np.ndarray) -> None:
             nonlocal best_values, best_obj, best_iter
     
             current = self._update_values(base_values, x)
@@ -88,28 +75,33 @@ class Optimizer:
             violations, _ = self._constraint_violations(current)
             mv = max_violation(violations)
     
-            # пишем историю (как было)
+            # история итераций
             history.add(
                 IterationRecord(
                     iteration=len(history.records) + 1,
-                    variables={var: current[var] for var in self.variables},
+                    variables={var: float(current[var]) for var in self.variables},
                     objective=float(result.key_outputs["J204"]),
                     outputs={
                         **{key: float(result.key_outputs[key]) for key in KEY_OUTPUTS},
-                        "J76": float(result.values["J76"]),
-                        "J77": float(result.values["J77"]),
+                        "J76": float(result.values.get("J76", 0.0)),
+                        "J77": float(result.values.get("J77", 0.0)),
                     },
                     violations=violations,
                 )
             )
     
-            # сохраняем лучшее ДОПУСТИМОЕ решение (min J204)
-            if mv <= tol:
+            # best feasible (строго)
+            if mv <= STRICT_TOL:
                 j204 = float(result.key_outputs["J204"])
                 if j204 < best_obj:
                     best_obj = j204
                     best_values = dict(current)  # копия
                     best_iter = len(history.records)
+    
+        # важно: callback вызывается не на каждом вычислении objective,
+        # поэтому best мы собираем именно тут
+        def callback(x: np.ndarray) -> None:
+            record_point(x)
     
         result = minimize(
             objective,
@@ -120,51 +112,34 @@ class Optimizer:
             callback=callback,
         )
     
-        # Финальная точка оптимизатора
+        # На всякий случай оценим финальную точку тоже как кандидата best
         final_values = self._update_values(base_values, result.x)
-        final_violations, final_statuses = self._constraint_violations(final_values)
-        final_mv = max_violation(final_violations)
-        final_obj = float(self.engine.compute(final_values).key_outputs["J204"])
+        final_violations, _ = self._constraint_violations(final_values)
+        if max_violation(final_violations) <= STRICT_TOL:
+            final_obj = float(self.engine.compute(final_values).key_outputs["J204"])
+            if final_obj < best_obj:
+                best_obj = final_obj
+                best_values = dict(final_values)
+                best_iter = None  # это финальная, не из callback
     
-        # Выбираем, что возвращать: best-feasible или final
-        chosen_values = final_values
-        chosen_statuses = final_statuses
-        chosen_obj = final_obj
-        chosen_mv = final_mv
-        chosen_note = ""
+        # выбираем то, что вернём
+        chosen = best_values if best_values is not None else final_values
+        chosen_violations, chosen_statuses = self._constraint_violations(chosen)
+        chosen_mv = max_violation(chosen_violations)
+        chosen_obj = float(self.engine.compute(chosen).key_outputs["J204"])
     
-        if best_values is not None:
-            best_violations, best_statuses = self._constraint_violations(best_values)
-            best_mv = max_violation(best_violations)
-    
-            # best должен быть реально допустимым по текущему режиму
-            if best_mv <= tol:
-                # выбираем меньший J204
-                if best_obj < chosen_obj:
-                    chosen_values = best_values
-                    chosen_statuses = best_statuses
-                    chosen_obj = best_obj
-                    chosen_mv = best_mv
-                    chosen_note = f" (лучшее допустимое: итерация {best_iter})"
-    
-        # Определяем успех
-        # strict: считаем успехом, если есть допустимая точка (chosen_mv <= 1e-4)
-        # soft: успех, если chosen_mv <= 5%
-        if soft:
-            success = chosen_mv <= 0.05
-        else:
-            success = chosen_mv <= 0.0001
-    
-        message = str(result.message) + chosen_note
+        success = chosen_mv <= STRICT_TOL
+        note = f" (минимум по итерациям: {best_iter})" if (best_values is not None and best_iter is not None) else ""
+        message = str(result.message) + note
     
         return OptimizationResult(
             success=success,
             message=message,
-            values=chosen_values,
+            values=chosen,
             objective=chosen_obj,
             constraints=chosen_statuses,
             history=history,
-            stage="soft" if soft else "strict",
+            stage="strict",
         )
 
     def _update_values(self, values: Dict[str, float], x: np.ndarray) -> Dict[str, float]:
@@ -203,8 +178,6 @@ class Optimizer:
         return bounds
         
     def _build_constraints(self, values: Dict[str, float], soft: bool) -> List[Dict[str, object]]:
-        if soft:
-            return []
         constraints = []
         for constraint in self.schema.solver.constraints:
             lhs = constraint.lhs
@@ -265,6 +238,6 @@ class Optimizer:
             else:
                 violation = abs(lhs_val - rhs_val) / max(abs(rhs_val), eps)
             violations[name] = violation
-            status = "green" if violation <= 0.0001 else "yellow" if violation <= 0.05 else "red"
+            status = "green" if violation <= 0.0001 else "red"
             statuses.append(ConstraintStatus(name=name, violation=violation, status=status))
         return violations, statuses
