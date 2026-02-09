@@ -177,7 +177,7 @@ class Optimizer:
             bounds.append((lo, hi))
         return bounds
         
-    def _build_constraints(self, values: Dict[str, float], soft: bool) -> List[Dict[str, object]]:
+    def _build_constraints(self, values: Dict[str, float]) -> List[Dict[str, object]]:
         constraints = []
         for constraint in self.schema.solver.constraints:
             lhs = constraint.lhs
