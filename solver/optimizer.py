@@ -9,6 +9,7 @@ from scipy.optimize import minimize
 from core.compute import ComputeEngine, KEY_OUTPUTS
 from core.model import Schema
 from solver.callbacks import IterationRecord, OptimizationHistory
+from core.model import normalize_cell
 
 
 @dataclass
@@ -114,12 +115,25 @@ class Optimizer:
         return updated
 
     def _build_bounds(self, values: Dict[str, float]) -> List[Tuple[float, float]]:
-        bounds = []
+        # values может содержать только вводы. Границы (E195/E197/J191/...) часто вычисляются.
+        computed = self.engine.compute(values).values  # все ячейки после расчёта
+
         bounds_map = {
-            "C7": (values["E195"], values["E197"]),
-            "J7": (values["J191"], values["J193"]),
-            "C9": (values["E191"], values["E193"]),
-            "J94": (values["J195"], values["J197"]),
+            "C7": (float(computed["E195"]), float(computed["E197"])),
+            "J7": (float(computed["J191"]), float(computed["J193"])),
+            "C9": (float(computed["E191"]), float(computed["E193"])),
+            "J94": (float(computed["J195"]), float(computed["J197"])),
+    }
+
+    bounds: List[Tuple[float, float]] = []
+    for var in self.variables:
+        lo, hi = bounds_map[var]
+        # на всякий случай: если перепутались местами из-за кривых данных
+        if lo > hi:
+            lo, hi = hi, lo
+        bounds.append((lo, hi))
+    return bounds
+
         }
         for var in self.variables:
             bounds.append(bounds_map[var])
@@ -155,9 +169,13 @@ class Optimizer:
             return float(expr)
         except ValueError:
             pass
-        if expr in values:
-            return float(values[expr])
-        return float(self.engine.compute(values).values[expr])
+
+        key = normalize_cell(expr)
+        if key in values:
+            return float(values[key])
+
+        computed = self.engine.compute(values).values
+        return float(computed[key])
 
     def _constraint_violations(self, values: Dict[str, float]) -> Tuple[Dict[str, float], List[ConstraintStatus]]:
         violations: Dict[str, float] = {}
