@@ -123,7 +123,7 @@ class Optimizer:
             "J7": (float(computed["J191"]), float(computed["J193"])),
             "C9": (float(computed["E191"]), float(computed["E193"])),
             "J94": (float(computed["J195"]), float(computed["J197"])),
-    }
+        }
 
     bounds: List[Tuple[float, float]] = []
     for var in self.variables:
