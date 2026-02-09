@@ -4,7 +4,7 @@ from typing import Dict, List
 
 from openpyxl import Workbook
 
-from core.model import InputCell
+from core.model import InputCell, normalize_cell
 from solver.optimizer import ConstraintStatus
 
 

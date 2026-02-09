@@ -1,0 +1,623 @@
+{
+  "sections": [
+    {
+      "anchor": "B5",
+      "title": "Исходные данные",
+      "outputs": [],
+      "images": [],
+      "inputs": [
+        "C7",
+        "J7",
+        "O7",
+        "T7",
+        "C9",
+        "J9",
+        "O9",
+        "T9",
+        "C11",
+        "J11",
+        "O11",
+        "T11",
+        "C13",
+        "J13",
+        "O13",
+        "T13",
+        "C15",
+        "O15",
+        "T15",
+        "C17",
+        "O17",
+        "T17",
+        "C19",
+        "O19",
+        "T19"
+      ]
+    },
+    {
+      "anchor": "B34",
+      "title": "1. Линейная скорость ремня υ, м/с",
+      "outputs": [
+        {
+          "cell": "H38",
+          "label": "υ =",
+          "unit": "м/с"
+        }
+      ],
+      "images": [
+        "formula_01.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "M34",
+      "title": "1.1 Частота вращения ведомого шкива n2, об/мин",
+      "outputs": [
+        {
+          "cell": "S38",
+          "label": "n2 =",
+          "unit": "об/мин"
+        }
+      ],
+      "images": [
+        "formula_18.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B42",
+      "title": "2. Окружная сила ремня Fc, Н",
+      "outputs": [
+        {
+          "cell": "H45",
+          "label": "Fc =",
+          "unit": "Н"
+        }
+      ],
+      "images": [
+        "formula_02.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B49",
+      "title": "3. Крутящий момент на ведущем шкиве M1, Нм",
+      "outputs": [
+        {
+          "cell": "H52",
+          "label": "M1 =",
+          "unit": "Нм"
+        }
+      ],
+      "images": [
+        "formula_03.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "M49",
+      "title": "3.1 Крутящий момент на ведомом шкиве M2, Нм",
+      "outputs": [
+        {
+          "cell": "T49",
+          "label": "M2 =",
+          "unit": "Нм"
+        }
+      ],
+      "images": [
+        "formula_19.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B55",
+      "title": "4. Межцентровое расстояние e, мм",
+      "outputs": [
+        {
+          "cell": "J58",
+          "label": "e =",
+          "unit": "мм"
+        }
+      ],
+      "images": [
+        "formula_04.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B61",
+      "title": "5. Угол охвата малого шкива φs, рад",
+      "outputs": [
+        {
+          "cell": "J64",
+          "label": "φs =",
+          "unit": "рад"
+        }
+      ],
+      "images": [
+        "formula_05.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B67",
+      "title": "6. Угол охвата большого шкива φl, рад",
+      "outputs": [
+        {
+          "cell": "J70",
+          "label": "φl =",
+          "unit": "рад"
+        }
+      ],
+      "images": [
+        "formula_06.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B73",
+      "title": "7. Отношение натяжений ремня TR",
+      "outputs": [
+        {
+          "cell": "J76",
+          "label": "TR =",
+          "unit": ""
+        },
+        {
+          "cell": "J77",
+          "label": "TRmax =",
+          "unit": ""
+        }
+      ],
+      "images": [],
+      "inputs": []
+    },
+    {
+      "anchor": "N73",
+      "title": "7.1 Отношение натяжений ремня TR из условия непроскальзывания",
+      "outputs": [
+        {
+          "cell": "U76",
+          "label": "TR =",
+          "unit": ""
+        }
+      ],
+      "images": [
+        "formula_07.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B79",
+      "title": "8. Натяжение в тянущей ветви Ts, Н",
+      "outputs": [
+        {
+          "cell": "J82",
+          "label": "Ts =",
+          "unit": "Н"
+        }
+      ],
+      "images": [],
+      "inputs": []
+    },
+    {
+      "anchor": "N79",
+      "title": "8.1 Необходимое натяжение в тянущей ветви Ts, Н, из условия непроскальзывания",
+      "outputs": [
+        {
+          "cell": "V82",
+          "label": "Ts =",
+          "unit": "Н"
+        }
+      ],
+      "images": [
+        "formula_08.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B85",
+      "title": "9. Натяжение в слабой ветви Tt, Н",
+      "outputs": [
+        {
+          "cell": "J88",
+          "label": "Tt =",
+          "unit": "Н"
+        }
+      ],
+      "images": [],
+      "inputs": []
+    },
+    {
+      "anchor": "N85",
+      "title": "9.1 Необходимое натяжение в слабой ветви Tt, Н, из условия непроскальзывания",
+      "outputs": [
+        {
+          "cell": "V88",
+          "label": "Tt =",
+          "unit": "Н"
+        }
+      ],
+      "images": [
+        "formula_09.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B91",
+      "title": "10. Преднатяжение Fр, Н",
+      "outputs": [],
+      "images": [],
+      "inputs": [
+        "J94"
+      ]
+    },
+    {
+      "anchor": "N91",
+      "title": "10.1 Преднатяжение Fp, Н, из условия непроскальзывания",
+      "outputs": [
+        {
+          "cell": "V94",
+          "label": "Fр =",
+          "unit": "Н"
+        }
+      ],
+      "images": [
+        "formula_10.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B97",
+      "title": "11. Требуемое удлинение ремня ΔLтреб, мм",
+      "outputs": [
+        {
+          "cell": "J100",
+          "label": "ΔLтреб =",
+          "unit": "мм"
+        }
+      ],
+      "images": [
+        "formula_11.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B103",
+      "title": "12. Требуемый подъем ролика s, мм",
+      "outputs": [
+        {
+          "cell": "O106",
+          "label": "O106",
+          "unit": "=J58"
+        },
+        {
+          "cell": "P106",
+          "label": "=N106*$J$58",
+          "unit": ""
+        },
+        {
+          "cell": "Q106",
+          "label": "=J58",
+          "unit": ""
+        },
+        {
+          "cell": "O107",
+          "label": "O107",
+          "unit": ""
+        },
+        {
+          "cell": "P107",
+          "label": "=N107*$J$58",
+          "unit": ""
+        },
+        {
+          "cell": "Q107",
+          "label": "=$J$58 - O107",
+          "unit": ""
+        },
+        {
+          "cell": "O108",
+          "label": "O108",
+          "unit": ""
+        },
+        {
+          "cell": "P108",
+          "label": "=N108*$J$58",
+          "unit": ""
+        },
+        {
+          "cell": "Q108",
+          "label": "=$J$58 - O108",
+          "unit": ""
+        },
+        {
+          "cell": "O109",
+          "label": "O109",
+          "unit": ""
+        },
+        {
+          "cell": "P109",
+          "label": "=N109*$J$58",
+          "unit": ""
+        },
+        {
+          "cell": "Q109",
+          "label": "=$J$58 - O109",
+          "unit": ""
+        },
+        {
+          "cell": "O110",
+          "label": "O110",
+          "unit": ""
+        },
+        {
+          "cell": "P110",
+          "label": "=N110*$J$58",
+          "unit": ""
+        },
+        {
+          "cell": "Q110",
+          "label": "=$J$58 - O110",
+          "unit": ""
+        },
+        {
+          "cell": "O111",
+          "label": "O111",
+          "unit": ""
+        },
+        {
+          "cell": "P111",
+          "label": "=N111*$J$58",
+          "unit": ""
+        },
+        {
+          "cell": "Q111",
+          "label": "=$J$58 - O111",
+          "unit": ""
+        },
+        {
+          "cell": "O112",
+          "label": "O112",
+          "unit": ""
+        },
+        {
+          "cell": "P112",
+          "label": "=N112*$J$58",
+          "unit": ""
+        },
+        {
+          "cell": "Q112",
+          "label": "=$J$58 - O112",
+          "unit": ""
+        },
+        {
+          "cell": "O113",
+          "label": "O113",
+          "unit": ""
+        },
+        {
+          "cell": "P113",
+          "label": "=N113*$J$58",
+          "unit": ""
+        },
+        {
+          "cell": "Q113",
+          "label": "=$J$58 - O113",
+          "unit": ""
+        },
+        {
+          "cell": "O114",
+          "label": "O114",
+          "unit": ""
+        },
+        {
+          "cell": "P114",
+          "label": "=N114*$J$58",
+          "unit": ""
+        },
+        {
+          "cell": "Q114",
+          "label": "=$J$58 - O114",
+          "unit": ""
+        },
+        {
+          "cell": "O115",
+          "label": "O115",
+          "unit": ""
+        },
+        {
+          "cell": "P115",
+          "label": "=N115*$J$58",
+          "unit": ""
+        },
+        {
+          "cell": "Q115",
+          "label": "=$J$58 - O115",
+          "unit": ""
+        },
+        {
+          "cell": "O116",
+          "label": "O116",
+          "unit": ""
+        },
+        {
+          "cell": "P116",
+          "label": "=N116*$J$58",
+          "unit": ""
+        },
+        {
+          "cell": "Q116",
+          "label": "=$J$58 - O116",
+          "unit": ""
+        }
+      ],
+      "images": [
+        "formula_14.png",
+        "formula_15.png",
+        "formula_16.png"
+      ],
+      "inputs": [
+        "N106",
+        "N107",
+        "N108",
+        "N109",
+        "N110",
+        "N111",
+        "N112",
+        "N113",
+        "N114",
+        "N115",
+        "N116"
+      ]
+    },
+    {
+      "anchor": "B119",
+      "title": "13. Расчетный прогиб при установленном преднатяжении Fр на середине натянутой ветви δ, мм",
+      "outputs": [
+        {
+          "cell": "J122",
+          "label": "δ =",
+          "unit": "мм"
+        }
+      ],
+      "images": [
+        "formula_12.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B125",
+      "title": "14. Измеренный прогиб δизм, мм",
+      "outputs": [],
+      "images": [
+        "formula_13.png"
+      ],
+      "inputs": [
+        "G125"
+      ]
+    },
+    {
+      "anchor": "B127",
+      "title": "15. Фактическое преднатяжение Tфакт, Н",
+      "outputs": [
+        {
+          "cell": "H127",
+          "label": "Tфакт =",
+          "unit": "Н"
+        }
+      ],
+      "images": [],
+      "inputs": []
+    },
+    {
+      "anchor": "B129",
+      "title": "16. Радиальная нагрузка на валу ведущего шкива Qточн, Н",
+      "outputs": [
+        {
+          "cell": "J132",
+          "label": "Qточн =",
+          "unit": "Н"
+        }
+      ],
+      "images": [
+        "formula_17.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "B136",
+      "title": "17. Требуемая внешняя радиальная сила, компенсирующая недостаток нагрузки по сравнению с эксплуатационным режимом, F, Н",
+      "outputs": [
+        {
+          "cell": "L141",
+          "label": "F =",
+          "unit": "Н"
+        }
+      ],
+      "images": [],
+      "inputs": []
+    },
+    {
+      "anchor": "B165",
+      "title": "18. Вес груза для нагружения вала G, кг",
+      "outputs": [
+        {
+          "cell": "J169",
+          "label": "G =",
+          "unit": "кг"
+        }
+      ],
+      "images": [
+        "formula_20.png"
+      ],
+      "inputs": []
+    },
+    {
+      "anchor": "N165",
+      "title": "19. Время испытаний t, ч",
+      "outputs": [
+        {
+          "cell": "T168",
+          "label": "t =",
+          "unit": "ч"
+        }
+      ],
+      "images": [],
+      "inputs": []
+    },
+    {
+      "anchor": "N174",
+      "title": "20. Стоимость испытаний Sисп, руб.",
+      "outputs": [
+        {
+          "cell": "T178",
+          "label": "Sисп =",
+          "unit": "руб."
+        }
+      ],
+      "images": [],
+      "inputs": []
+    },
+    {
+      "anchor": "B182",
+      "title": "19. Оптимизация параметров",
+      "outputs": [],
+      "images": [],
+      "inputs": []
+    },
+    {
+      "anchor": "C184",
+      "title": "19.1 Веса переменных, ограничения",
+      "outputs": [],
+      "images": [],
+      "inputs": [
+        "E187",
+        "O187",
+        "E189",
+        "O189",
+        "E195",
+        "E197",
+        "E191",
+        "E193",
+        "J191",
+        "J193",
+        "J195",
+        "J197",
+        "J187"
+      ]
+    },
+    {
+      "anchor": "C201",
+      "title": "19.2 Целевая функция J",
+      "outputs": [
+        {
+          "cell": "J204",
+          "label": "J =",
+          "unit": ""
+        }
+      ],
+      "images": [],
+      "inputs": []
+    }
+  ]
+}

@@ -7,7 +7,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
-from core.model import InputCell
+from core.model import InputCell, normalize_cell
 from solver.optimizer import ConstraintStatus
 
 
@@ -35,7 +35,7 @@ def export_pdf(
     y = draw_line("", y)
     y = draw_line("Входные данные:", y)
     for item in inputs:
-        y = draw_line(f"{item.name} ({item.cell}): {values.get(normalize_cell(item.cell))} {item.unit}", y)
+        y = draw_line(f"{item.name}: {values.get(normalize_cell(item.cell))} {item.unit}", y)
         if y < 40 * mm:
             c.showPage()
             y = height - 20 * mm
