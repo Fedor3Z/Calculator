@@ -125,14 +125,13 @@ class Optimizer:
             "J94": (float(computed["J195"]), float(computed["J197"])),
         }
 
-    bounds: List[Tuple[float, float]] = []
-    for var in self.variables:
-        lo, hi = bounds_map[var]
-        # на всякий случай: если перепутались местами из-за кривых данных
-        if lo > hi:
-            lo, hi = hi, lo
-        bounds.append((lo, hi))
-    return bounds
+        bounds: List[Tuple[float, float]] = []
+        for var in self.variables:
+            lo, hi = bounds_map[var]
+            if lo > hi:
+                lo, hi = hi, lo
+            bounds.append((lo, hi))
+        return bounds
         
     def _build_constraints(self, values: Dict[str, float], soft: bool) -> List[Dict[str, object]]:
         if soft:
