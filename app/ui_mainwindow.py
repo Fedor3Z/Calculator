@@ -332,7 +332,11 @@ class MainWindow(QMainWindow):
         self.recent_store = RecentProjects(self._settings_path())
         self.project_store = ProjectStorage(self._projects_dir())
 
-        self.setWindowTitle("Расчет кинематики и системы нагружения")
+        self.setWindowTitle(
+            "Программа для расчета кинематики и системы нагружения в стенде для испытаний на прочность "
+            "рабочих органов измельчителя-разбрасывателя соломы зерноуборочного комбайна"
+        )
+
         self.resize(1400, 900)
 
         self._build_toolbar()
@@ -693,19 +697,28 @@ class MainWindow(QMainWindow):
 
     # --------------------- Data sync ---------------------
     def _update_ui_from_values(self) -> None:
-        locale = QLocale("ru_RU")
-        for cell, field in self.input_widgets.items():
-            field.setText(locale.toString(self.values.get(cell, 0.0)))
+    locale = QLocale("ru_RU")
+    for cell, field in self.input_widgets.items():
+        val = self.values.get(cell, 0.0)
+        # Показываем пусто, если 0 (по умолчанию все параметры = 0)
+        if val is None or abs(float(val)) < 1e-12:
+            field.clear()
+        else:
+            field.setText(locale.toString(float(val)))
 
     def _collect_inputs(self) -> Dict[str, float]:
         locale = QLocale("ru_RU")
         values = dict(self.values)
         for cell, field in self.input_widgets.items():
-            text = field.text().replace(" ", "")
-            value, ok = locale.toDouble(text)
-            if not ok:
-                raise ValueError(f"Некорректное значение в {cell}")
-            values[cell] = value
+            text = field.text().replace(" ", "").strip()
+            if text == "":
+                values[cell] = 0.0
+                continue
+
+        value, ok = locale.toDouble(text)
+        if not ok:
+            raise ValueError(f"Некорректное значение в {cell}")
+        values[cell] = value
         return values
 
     # --------------------- Actions ---------------------
@@ -807,8 +820,22 @@ class MainWindow(QMainWindow):
 
     def on_reset_defaults(self) -> None:
         self.values = self.engine.default_values()
+        for cell in self.inputs_by_cell.keys():
+            self.values[cell] = 0.0
         self._update_ui_from_values()
-        self.on_calculate()
+
+        # Сбросим отображение результатов, но расчёт не запускаем
+        for lbl in self.output_labels.values():
+            lbl.setText("-")
+        for lbl in getattr(self, "section_output_labels", {}).values():
+            lbl.setText("-")
+        self.table.clearContents()
+        self.constraint_table.setRowCount(0)
+        self.iter_table.setRowCount(0)
+        self.iter_plot.ax.clear()
+        self.iter_plot.draw()
+        self.profile_plot.ax.clear()
+        self.profile_plot.draw()
 
     def on_toggle_theme(self) -> None:
         self.state.theme = "dark" if self.theme_toggle.isChecked() else "light"

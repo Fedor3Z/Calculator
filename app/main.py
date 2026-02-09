@@ -11,6 +11,13 @@ from core.model import SchemaLoader
 
 def main() -> int:
     app = QApplication(sys.argv)
+    title = (
+        "Программа для расчета кинематики и системы нагружения в стенде для испытаний на прочность "
+        "рабочих органов измельчителя-разбрасывателя соломы зерноуборочного комбайна"
+    )
+    app.setApplicationName(title)
+    app.setApplicationDisplayName(title)
+
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     schema_path = base / "assets" / "kinematics_calc_extracted.json"
     schema = SchemaLoader(schema_path).load()
