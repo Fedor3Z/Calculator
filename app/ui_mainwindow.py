@@ -3,15 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import re
+import shutil
+import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import Qt, QLocale
-from PySide6.QtGui import QAction, QDoubleValidator, QPixmap
+from PySide6.QtGui import QAction, QDoubleValidator, QPixmap, QFont, QFontMetrics
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
-    QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -20,17 +22,16 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSplitter,
+    QStyle,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QToolBar,
-    QToolButton,
-    QMenu,
     QVBoxLayout,
     QWidget,
     QFileDialog,
-    QScrollArea,
 )
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -38,13 +39,12 @@ from matplotlib.figure import Figure
 
 from app import VERSION
 from core.compute import ComputeEngine, KEY_OUTPUTS
-from core.dependency_graph import build_dependency_graph, dependency_chain
 from core.model import InputCell, Schema, normalize_cell, schema_formulas_by_cell, schema_inputs_by_cell
 from export.export_pdf import export_pdf
 from export.export_xlsx import export_report
 from imports.import_excel import import_from_excel
 from solver.optimizer import Optimizer
-from storage.projects import ProjectData, ProjectStorage, default_project_name
+from storage.projects import ProjectData, ProjectStorage
 from storage.recents import RecentProjects
 
 
@@ -53,12 +53,11 @@ class UiState:
     project_path: Optional[Path] = None
     notes: str = ""
     theme: str = "light"
-    mode: str = "user"
 
 
 LIGHT_STYLESHEET = """
 QWidget { }
-QLineEdit, QTableWidget, QComboBox {
+QLineEdit, QTableWidget {
     background: #ffffff;
     color: #111111;
 }
@@ -73,7 +72,7 @@ QWidget {
     background-color: #2b2b2b;
     color: #f0f0f0;
 }
-QLineEdit, QTableWidget, QComboBox {
+QLineEdit, QTableWidget {
     background: #1f1f1f;
     color: #f0f0f0;
     border: 1px solid #3b3b3b;
@@ -100,30 +99,84 @@ class MatplotlibCanvas(FigureCanvas):
     def __init__(self) -> None:
         self.figure = Figure(figsize=(5, 3))
         self.ax = self.figure.add_subplot(111)
+        self._qlocale = QLocale("ru_RU")
+        self._qfont: QFont | None = None
         super().__init__(self.figure)
 
-    def plot(self, x: List[float], y: List[float], title: str, xlabel: str, ylabel: str) -> None:
+    def set_qt_style(self, font: QFont, locale: QLocale) -> None:
+        self._qfont = font
+        self._qlocale = locale
+
+    def _apply_qt_style(self) -> None:
+        if self._qfont is None:
+            return
+        import matplotlib as mpl
+
+        size = float(self._qfont.pointSizeF() or 10)
+        mpl.rcParams["font.family"] = self._qfont.family()
+        mpl.rcParams["font.size"] = size
+
+    def plot(self, x: List[float], y: List[float], title: str, xlabel: str, ylabel: str, y_decimals: int = 3) -> None:
+        from matplotlib.ticker import FuncFormatter
+
+        self._apply_qt_style()
         self.ax.clear()
         self.ax.plot(x, y, marker="o")
         self.ax.set_title(title)
         self.ax.set_xlabel(xlabel)
         self.ax.set_ylabel(ylabel)
+
+        self.ax.xaxis.set_major_formatter(
+            FuncFormatter(
+                lambda v, p: str(int(v)) if float(v).is_integer() else self._qlocale.toString(v, "f", 1)
+            )
+        )
+        self.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, p: self._qlocale.toString(v, "f", y_decimals)))
+
+        if self._qfont is not None:
+            fs = float(self._qfont.pointSizeF() or 10)
+            self.ax.tick_params(labelsize=fs)
+
         self.figure.tight_layout()
         self.draw()
 
-    def plot_multi(self, series: Dict[str, List[float]], x: List[float]) -> None:
+    def plot_multi(self, series: Dict[str, List[float]], x: List[float], x_decimals: int = 1, y_decimals: int = 3) -> None:
+        from matplotlib.ticker import FuncFormatter
+
+        self._apply_qt_style()
         self.ax.clear()
         for label, values in series.items():
             self.ax.plot(x, values, label=label)
         self.ax.legend()
         self.ax.set_title("Профили цели")
         self.ax.set_xlabel("Отклонение, %")
-        self.ax.set_ylabel("J204")
+        self.ax.set_ylabel("J")
+
+        self.ax.xaxis.set_major_formatter(FuncFormatter(lambda v, p: self._qlocale.toString(v, "f", x_decimals)))
+        self.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, p: self._qlocale.toString(v, "f", y_decimals)))
+
+        if self._qfont is not None:
+            fs = float(self._qfont.pointSizeF() or 10)
+            self.ax.tick_params(labelsize=fs)
+
         self.figure.tight_layout()
         self.draw()
 
 
 class MainWindow(QMainWindow):
+    """Основное окно.
+
+    Требования пользователя:
+    - Только вкладки: Расчет / Оптимизация / Профили цели
+    - Без режима "Инженерный" (оптимизация всегда доступна)
+    - Десятичная запятая
+    - Единый шрифт (в т.ч. графики)
+    - Формулы без искусственного увеличения
+    - Округления: 1 знак для всех, кроме J76/J77/J204 (3 знака)
+    """
+
+    SPECIAL_3DP = {"J76", "J77", "J204"}
+
     def __init__(self, schema: Schema) -> None:
         super().__init__()
         self.schema = schema
@@ -132,9 +185,11 @@ class MainWindow(QMainWindow):
         self.inputs_by_cell = schema_inputs_by_cell(schema)
         self.formulas_by_cell = schema_formulas_by_cell(schema)
 
-        self.assets_dir = Path(__file__).resolve().parent.parent / "assets"
-        self.sections_map = self._load_sections_map()
-        self.key_outputs_map = self._load_key_outputs_map()
+        base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+        self.assets_dir = base / "assets"
+
+        self.sections_map = self._load_json(self.assets_dir / "sections_map.json", default={"sections": []})
+        self.key_outputs_map = self._load_json(self.assets_dir / "key_outputs_map.json", default={})
 
         self.state = UiState()
         self.values = self.engine.default_values()
@@ -148,9 +203,50 @@ class MainWindow(QMainWindow):
         self._build_menu()
         self._build_layout()
         self._apply_theme()
-        self._apply_mode()
         self._update_ui_from_values()
 
+    # --------------------- UI helpers ---------------------
+    def _load_json(self, path: Path, default: Any) -> Any:
+        try:
+            if path.exists():
+                return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return default
+        return default
+
+    def _decimals_for_cell(self, cell: str) -> int:
+        return 3 if normalize_cell(cell) in self.SPECIAL_3DP else 1
+
+    def _format_value(self, value: float | None, decimals: int) -> str:
+        if value is None:
+            return "-"
+        locale = QLocale("ru_RU")
+        return locale.toString(float(value), "f", int(decimals))
+
+    def _formula_image_path(self, filename: str) -> Path:
+        return self.assets_dir / "formulas" / filename
+
+    def _scale_formula_pixmap(self, pix: QPixmap) -> QPixmap:
+        """Не увеличиваем изображения формул. Только уменьшаем при необходимости."""
+        if pix.isNull():
+            return pix
+
+        # Ограничение по ширине (только downscale)
+        max_w = 680
+        scaled = pix
+        if pix.width() > max_w:
+            scaled = pix.scaledToWidth(max_w, Qt.SmoothTransformation)
+
+        # Ограничение по высоте относительно 14 pt
+        ref_font = QFont(self.font().family(), 14)
+        fm = QFontMetrics(ref_font)
+        max_h = int(fm.height() * 4.0)  # формулы с дробями обычно ~3-4 высоты строки
+        if scaled.height() > max_h:
+            scaled = scaled.scaledToHeight(max_h, Qt.SmoothTransformation)
+
+        return scaled
+
+    # --------------------- Build UI ---------------------
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("Главная")
         self.addToolBar(toolbar)
@@ -171,14 +267,12 @@ class MainWindow(QMainWindow):
         self.action_export_pdf = add_action("Экспорт в PDF", self.on_export_pdf)
         self.action_reset = add_action("Сброс к значениям по умолчанию", self.on_reset_defaults)
 
+        # Оптимизация всегда доступна
+        self.action_optimize.setEnabled(True)
+
         self.theme_toggle = QCheckBox("Тёмная тема")
         self.theme_toggle.stateChanged.connect(self.on_toggle_theme)
         toolbar.addWidget(self.theme_toggle)
-
-        self.mode_toggle = QComboBox()
-        self.mode_toggle.addItems(["Пользовательский", "Инженерный"])
-        self.mode_toggle.currentIndexChanged.connect(self.on_toggle_mode)
-        toolbar.addWidget(self.mode_toggle)
 
     def _build_menu(self) -> None:
         menu = self.menuBar().addMenu("Файл")
@@ -210,25 +304,10 @@ class MainWindow(QMainWindow):
         self.recent_store.add(Path(path))
         self._refresh_recent_menu()
 
-    def _load_sections_map(self) -> Dict[str, Any]:
-        path = self.assets_dir / "sections_map.json"
-        if not path.exists():
-            return {"sections": []}
-        return json.loads(path.read_text(encoding="utf-8"))
-
-    def _load_key_outputs_map(self) -> Dict[str, Any]:
-        path = self.assets_dir / "key_outputs_map.json"
-        if not path.exists():
-            return {}
-        return json.loads(path.read_text(encoding="utf-8"))
-
-    def _formula_image_path(self, filename: str) -> Path:
-        return self.assets_dir / "formulas" / filename
-
     def _build_layout(self) -> None:
         splitter = QSplitter(Qt.Horizontal)
 
-        # Левая панель (ввод) -> в ScrollArea
+        # Левая панель (ввод)
         inputs_widget = self._build_inputs_panel()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -245,20 +324,9 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(container)
 
         self.input_widgets: Dict[str, QLineEdit] = {}
-        self.input_groups_user: List[QGroupBox] = []
-        self.input_groups_engineering: List[QGroupBox] = []
-
         locale = QLocale("ru_RU")
-        essential_titles = {
-            "Исходные данные",
-            "10. Преднатяжение Fр, Н",
-            "14. Измеренный прогиб δизм, мм",
-        }
 
-        input_sections = [
-            s for s in self.sections_map.get("sections", [])
-            if s.get("inputs")
-        ]
+        input_sections = [s for s in self.sections_map.get("sections", []) if s.get("inputs")]
 
         for section in input_sections:
             title = section.get("title", "Ввод")
@@ -271,39 +339,36 @@ class MainWindow(QMainWindow):
                 if not item:
                     continue
 
-                # Более читабельные подписи: без ссылок на ячейки
-                name = (item.name or "").strip()
+                name = (item.name or "").strip().replace("=", "")
                 if cell_norm.startswith("N") and cell_norm[1:].isdigit():
                     row = int(cell_norm[1:])
                     if 106 <= row <= 116:
                         name = f"k{row - 105}"
                 if not name:
                     name = cell_norm
-                if not name.endswith("="):
-                    name = f"{name} ="
 
-                help_text = (item.description or "").strip()
+                help_text = (item.description or "").strip() or "Пояснение не задано."
                 unit_text = (item.unit or "").strip()
                 if unit_text.startswith("="):
                     unit_text = ""
-                if not help_text:
-                    help_text = "Пояснение будет добавлено."
 
                 label_widget = QWidget()
                 label_layout = QHBoxLayout(label_widget)
                 label_layout.setContentsMargins(0, 0, 0, 0)
+
                 label = QLabel(name)
                 label.setToolTip(cell_norm)
                 label_layout.addWidget(label)
-                help_btn = QToolButton()
-                help_btn.setText("?")
-                help_btn.setAutoRaise(True)
-                menu = QMenu(help_btn)
-                act = QAction(help_text, menu)
-                act.setEnabled(False)
-                menu.addAction(act)
-                help_btn.setMenu(menu)
-                help_btn.setPopupMode(QToolButton.InstantPopup)
+
+                # Кнопка подсказки: '?' в кружочке, без меню (без стрелки)
+                help_btn = QPushButton()
+                help_btn.setFlat(True)
+                help_btn.setIcon(QApplication.style().standardIcon(QStyle.SP_MessageBoxQuestion))
+                help_btn.setToolTip("Пояснение")
+                help_btn.setFixedSize(22, 22)
+                help_btn.clicked.connect(
+                    lambda _=False, t=help_text, ttl=name: QMessageBox.information(self, ttl or "Пояснение", t)
+                )
                 label_layout.addWidget(help_btn)
                 label_layout.addStretch()
 
@@ -316,6 +381,7 @@ class MainWindow(QMainWindow):
                 row_layout = QHBoxLayout(row_widget)
                 row_layout.setContentsMargins(0, 0, 0, 0)
                 row_layout.addWidget(field)
+
                 unit_label = QLabel(unit_text)
                 unit_label.setMinimumWidth(52)
                 unit_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -326,11 +392,6 @@ class MainWindow(QMainWindow):
 
             layout.addWidget(group)
 
-            if title in essential_titles:
-                self.input_groups_user.append(group)
-            else:
-                self.input_groups_engineering.append(group)
-
         layout.addStretch()
         return container
 
@@ -338,10 +399,11 @@ class MainWindow(QMainWindow):
         container = QWidget()
         layout = QVBoxLayout(container)
 
-        # --- Ключевые результаты (показываем обозначения, не адреса ячеек)
+        # Ключевые результаты
         self.output_labels: Dict[str, QLabel] = {}
         output_group = QGroupBox("Ключевые результаты")
         output_layout = QFormLayout(output_group)
+
         for cell in KEY_OUTPUTS:
             meta = self.key_outputs_map.get(cell, {})
             label_text = meta.get("label", cell)
@@ -351,6 +413,7 @@ class MainWindow(QMainWindow):
 
             value_label = QLabel("-")
             value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
             unit_label = QLabel(unit_text)
             unit_label.setMinimumWidth(52)
             unit_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -363,30 +426,24 @@ class MainWindow(QMainWindow):
 
             output_layout.addRow(left, row)
             self.output_labels[cell] = value_label
+
         layout.addWidget(output_group)
 
-        # --- Вкладки
+        # Вкладки
         self.tabs = QTabWidget()
 
-        # Таблица k,a,b,s (будет вставлена в раздел 12 внутри вкладки "Расчет")
+        # Таблица k,a,b,s
         self.table = QTableWidget(11, 4)
         self.table.setHorizontalHeaderLabels(["k", "a", "b", "s"])
 
-        self.calc_tab_index = 0
-        self.tabs.addTab(self._build_calc_tab(), "Расчёт")
+        self.tabs.addTab(self._build_calc_tab(), "Расчет")
 
         # Оптимизация
         self.iter_table = QTableWidget(0, 8)
-        self.iter_table.setHorizontalHeaderLabels([
-            "Итерация",
-            "C7",
-            "J7",
-            "C9",
-            "J94",
-            "J204",
-            "J76",
-            "J77",
-        ])
+        self.iter_table.setHorizontalHeaderLabels(
+            ["Итерация", "D1, мм", "D2, мм", "n1, об/мин", "Fр, Н", "J", "TR", "TRmax"]
+        )
+
         self.constraint_table = QTableWidget(0, 3)
         self.constraint_table.setHorizontalHeaderLabels(["Ограничение", "Нарушение", "Статус"])
 
@@ -396,41 +453,24 @@ class MainWindow(QMainWindow):
         iter_layout.addWidget(self.constraint_table)
         iter_layout.addWidget(QLabel("История итераций"))
         iter_layout.addWidget(self.iter_table)
+
         self.iter_plot = MatplotlibCanvas()
+        self.iter_plot.set_qt_style(self.font(), QLocale("ru_RU"))
         iter_layout.addWidget(self.iter_plot)
-        self.tab_index_optimization = self.tabs.addTab(iter_container, "Оптимизация")
+        self.tabs.addTab(iter_container, "Оптимизация")
 
         # Профили цели
         self.profile_plot = MatplotlibCanvas()
+        self.profile_plot.set_qt_style(self.font(), QLocale("ru_RU"))
         profile_container = QWidget()
         profile_layout = QVBoxLayout(profile_container)
         profile_layout.addWidget(self.profile_plot)
-        self.tab_index_profiles = self.tabs.addTab(profile_container, "Профили цели")
-
-        # Инженерный
-        self.all_cells_table = QTableWidget(0, 2)
-        self.formula_table = QTableWidget(0, 2)
-        self.dependency_table = QTableWidget(0, 1)
-        self.dependency_selector = QComboBox()
-        self.dependency_selector.addItems(sorted(self.formulas_by_cell.keys()))
-        self.dependency_selector.currentTextChanged.connect(self._update_dependency_chain)
-
-        engineering_container = QWidget()
-        engineering_layout = QVBoxLayout(engineering_container)
-        engineering_layout.addWidget(QLabel("Все ячейки"))
-        engineering_layout.addWidget(self.all_cells_table)
-        engineering_layout.addWidget(QLabel("Формулы"))
-        engineering_layout.addWidget(self.formula_table)
-        engineering_layout.addWidget(QLabel("Зависимости"))
-        engineering_layout.addWidget(self.dependency_selector)
-        engineering_layout.addWidget(self.dependency_table)
-        self.tab_index_engineering = self.tabs.addTab(engineering_container, "Инженерный")
+        self.tabs.addTab(profile_container, "Профили цели")
 
         layout.addWidget(self.tabs)
         return container
 
     def _build_calc_tab(self) -> QWidget:
-        # Содержимое вкладки "Расчёт" (разделы 1..19.2)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -444,12 +484,12 @@ class MainWindow(QMainWindow):
         for section in self.sections_map.get("sections", []):
             title = section.get("title", "")
             if title == "Исходные данные":
-                continue  # исходные данные остаются в левой панели
+                continue
 
             group = QGroupBox(title)
             g_layout = QVBoxLayout(group)
 
-            # картинки формул (как в Excel)
+            # Формулы
             for img in section.get("images", []) or []:
                 img_path = self._formula_image_path(img)
                 if not img_path.exists():
@@ -457,11 +497,17 @@ class MainWindow(QMainWindow):
                 pix = QPixmap(str(img_path))
                 img_lbl = QLabel()
                 img_lbl.setAlignment(Qt.AlignCenter)
-                img_lbl.setPixmap(pix.scaledToWidth(680, Qt.SmoothTransformation))
+                img_lbl.setPixmap(self._scale_formula_pixmap(pix))
                 g_layout.addWidget(img_lbl)
 
-            # раздел 12 — показываем таблицу k,a,b,s (вместо длинного списка ячеек)
+            # Раздел 12: пояснение + таблица
             if title.startswith("12."):
+                g_layout.addWidget(
+                    QLabel(
+                        "k — доля пролёта от ведущего шкива; a — расстояние от ведущего шкива до ролика, мм; "
+                        "b — расстояние от ролика до ведомого шкива, мм."
+                    )
+                )
                 g_layout.addWidget(QLabel("Таблица k, a, b, s"))
                 g_layout.addWidget(self.table)
                 layout.addWidget(group)
@@ -480,6 +526,7 @@ class MainWindow(QMainWindow):
                     left = QLabel(label_text)
                     value_label = QLabel("-")
                     value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
                     unit_label = QLabel(unit_text)
                     unit_label.setMinimumWidth(52)
                     unit_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -490,8 +537,10 @@ class MainWindow(QMainWindow):
                     row_layout.addWidget(value_label)
                     row_layout.addWidget(unit_label)
                     form.addRow(left, row)
+
                     if cell:
                         self.section_output_labels[cell] = value_label
+
                 g_layout.addLayout(form)
 
             layout.addWidget(group)
@@ -505,6 +554,7 @@ class MainWindow(QMainWindow):
         w_layout.addWidget(scroll)
         return wrapper
 
+    # --------------------- Data sync ---------------------
     def _update_ui_from_values(self) -> None:
         locale = QLocale("ru_RU")
         for cell, field in self.input_widgets.items():
@@ -521,6 +571,7 @@ class MainWindow(QMainWindow):
             values[cell] = value
         return values
 
+    # --------------------- Actions ---------------------
     def on_calculate(self) -> None:
         try:
             self.values = self._collect_inputs()
@@ -622,124 +673,128 @@ class MainWindow(QMainWindow):
         self._update_ui_from_values()
         self.on_calculate()
 
+    def on_toggle_theme(self) -> None:
+        self.state.theme = "dark" if self.theme_toggle.isChecked() else "light"
+        self._apply_theme()
+
+    # --------------------- Update views ---------------------
+    def _update_outputs(self, result) -> None:
+        # ключевые результаты
+        for cell, label in self.output_labels.items():
+            value = result.key_outputs.get(cell)
+            label.setText(self._format_value(value, self._decimals_for_cell(cell)))
+
+        # таблица k,a,b,s (1 знак)
+        for row_idx, row in enumerate(result.table_rows):
+            for col_idx, value in enumerate(row):
+                item = QTableWidgetItem(self._format_value(value, 1) if value is not None else "-")
+                item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                self.table.setItem(row_idx, col_idx, item)
+
+        # значения по разделам
+        for cell, label in getattr(self, "section_output_labels", {}).items():
+            value = result.values.get(cell)
+            label.setText(self._format_value(value, self._decimals_for_cell(cell)))
+
+    def _update_constraints(self, constraints) -> None:
+        locale = QLocale("ru_RU")
+        self.constraint_table.setRowCount(0)
+
+        def pretty_expr(expr: str) -> str:
+            key = normalize_cell(str(expr))
+
+            # 1) входные параметры
+            item = self.inputs_by_cell.get(key)
+            if item and (item.name or "").strip():
+                name = (item.name or "").replace("=", "").strip()
+                unit = (item.unit or "").strip()
+                return f"{name}, {unit}".rstrip(", ") if unit else name
+
+            # 2) ключевые результаты
+            meta = self.key_outputs_map.get(key, {})
+            if meta.get("label"):
+                unit = (meta.get("unit") or "").strip()
+                return f"{meta['label']}, {unit}".rstrip(", ") if unit else meta["label"]
+
+            # 3) выходы разделов
+            for sec in self.sections_map.get("sections", []):
+                for out in (sec.get("outputs") or []):
+                    if normalize_cell(out.get("cell", "")) == key:
+                        lbl = (out.get("label") or key).replace("=", "").strip()
+                        unit = (out.get("unit") or "").replace("=", "").strip()
+                        return f"{lbl}, {unit}".rstrip(", ") if unit else lbl
+
+            return key
+
+        for idx, item in enumerate(constraints):
+            self.constraint_table.insertRow(idx)
+            raw = item.name
+            parsed = re.match(r"C(\d+):\s*(.+?)\s+(le|ge|eq)\s+(.+)$", raw)
+            if parsed:
+                lhs = pretty_expr(parsed.group(2))
+                rhs = pretty_expr(parsed.group(4))
+                op = {"le": "≤", "ge": "≥", "eq": "="}.get(parsed.group(3), parsed.group(3))
+                pretty = f"{lhs} {op} {rhs}"
+            else:
+                pretty = raw
+
+            self.constraint_table.setItem(idx, 0, QTableWidgetItem(pretty))
+            self.constraint_table.setItem(
+                idx,
+                1,
+                QTableWidgetItem(locale.toString(item.violation * 100.0, "f", 2) + " %"),
+            )
+            self.constraint_table.setItem(idx, 2, QTableWidgetItem(item.status))
+
+    def _update_history(self, history) -> None:
+        self.iter_table.setRowCount(0)
+        xs: List[float] = []
+        ys: List[float] = []
+
+        for idx, record in enumerate(history.records):
+            self.iter_table.insertRow(idx)
+            self.iter_table.setItem(idx, 0, QTableWidgetItem(str(record.iteration)))
+
+            self.iter_table.setItem(idx, 1, QTableWidgetItem(self._format_value(record.variables["C7"], 1)))
+            self.iter_table.setItem(idx, 2, QTableWidgetItem(self._format_value(record.variables["J7"], 1)))
+            self.iter_table.setItem(idx, 3, QTableWidgetItem(self._format_value(record.variables["C9"], 1)))
+            self.iter_table.setItem(idx, 4, QTableWidgetItem(self._format_value(record.variables["J94"], 1)))
+
+            # J204 / J76 / J77
+            self.iter_table.setItem(idx, 5, QTableWidgetItem(self._format_value(record.objective, 3)))
+            self.iter_table.setItem(idx, 6, QTableWidgetItem(self._format_value(record.outputs.get("J76"), 3)))
+            self.iter_table.setItem(idx, 7, QTableWidgetItem(self._format_value(record.outputs.get("J77"), 3)))
+
+            xs.append(float(record.iteration))
+            ys.append(float(record.objective))
+
+        if xs:
+            self.iter_plot.plot(xs, ys, "J по итерациям", "Итерация", "J", y_decimals=3)
+
+    def _update_profile_plot(self, values: Dict[str, float], percent: float = 10.0, points: int = 41) -> None:
+        final_values = values
+        variables = ["C7", "J7", "C9", "J94"]  # D1, D2, n1, Fр
+        sweep = [((i - (points // 2)) / (points // 2)) * percent for i in range(points)]
+        series: Dict[str, List[float]] = {}
+        for var in variables:
+            ys: List[float] = []
+            for delta in sweep:
+                current = dict(final_values)
+                current[var] = final_values[var] * (1 + delta / 100.0)
+                ys.append(float(self.engine.compute(current).key_outputs["J204"]))
+            label = {"C7": "D1, мм", "J7": "D2, мм", "C9": "n1, об/мин", "J94": "Fр, Н"}.get(var, var)
+            series[label] = ys
+        self.profile_plot.plot_multi(series, sweep, x_decimals=1, y_decimals=3)
+
+    # --------------------- Theme & persistence ---------------------
     def _apply_theme(self) -> None:
         app = QApplication.instance()
         if not app:
             return
         app.setStyleSheet(DARK_STYLESHEET if self.state.theme == "dark" else LIGHT_STYLESHEET)
-        # синхронизация переключателя
         self.theme_toggle.blockSignals(True)
         self.theme_toggle.setChecked(self.state.theme == "dark")
         self.theme_toggle.blockSignals(False)
-
-    def _apply_mode(self) -> None:
-        is_eng = self.state.mode == "engineering"
-
-        # вкладки
-        if hasattr(self, "tabs"):
-            self.tabs.setTabVisible(self.tab_index_optimization, is_eng)
-            self.tabs.setTabVisible(self.tab_index_profiles, is_eng)
-            self.tabs.setTabVisible(self.tab_index_engineering, is_eng)
-
-        # панель ввода
-        for g in getattr(self, "input_groups_engineering", []):
-            g.setVisible(is_eng)
-        for g in getattr(self, "input_groups_user", []):
-            g.setVisible(True)
-
-        # действия/кнопки
-        self.action_optimize.setEnabled(is_eng)
-
-        # синхронизация комбобокса
-        self.mode_toggle.blockSignals(True)
-        self.mode_toggle.setCurrentIndex(1 if is_eng else 0)
-        self.mode_toggle.blockSignals(False)
-
-    def on_toggle_theme(self) -> None:
-        self.state.theme = "dark" if self.theme_toggle.isChecked() else "light"
-        self._apply_theme()
-
-    def on_toggle_mode(self) -> None:
-        self.state.mode = "engineering" if self.mode_toggle.currentIndex() == 1 else "user"
-        self._apply_mode()
-
-    def _update_outputs(self, result) -> None:
-        locale = QLocale("ru_RU")
-        for cell, label in self.output_labels.items():
-            value = result.key_outputs.get(cell)
-            label.setText(locale.toString(value, 'f', 4) if value is not None else "-")
-        for row_idx, row in enumerate(result.table_rows):
-            for col_idx, value in enumerate(row):
-                item = QTableWidgetItem(locale.toString(value, 'f', 4) if value is not None else "-")
-                item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                self.table.setItem(row_idx, col_idx, item)
-
-        # значения по разделам (1..19.2)
-        for cell, label in getattr(self, "section_output_labels", {}).items():
-            value = result.values.get(cell)
-            label.setText(locale.toString(value, 'f', 4) if value is not None else "-")
-        self._update_all_cells(result.values)
-
-    def _update_constraints(self, constraints) -> None:
-        self.constraint_table.setRowCount(0)
-        for idx, item in enumerate(constraints):
-            self.constraint_table.insertRow(idx)
-            self.constraint_table.setItem(idx, 0, QTableWidgetItem(item.name))
-            self.constraint_table.setItem(idx, 1, QTableWidgetItem(f"{item.violation:.2%}"))
-            self.constraint_table.setItem(idx, 2, QTableWidgetItem(item.status))
-
-    def _update_history(self, history) -> None:
-        self.iter_table.setRowCount(0)
-        xs = []
-        ys = []
-        for idx, record in enumerate(history.records):
-            self.iter_table.insertRow(idx)
-            self.iter_table.setItem(idx, 0, QTableWidgetItem(str(record.iteration)))
-            self.iter_table.setItem(idx, 1, QTableWidgetItem(f"{record.variables['C7']:.4f}"))
-            self.iter_table.setItem(idx, 2, QTableWidgetItem(f"{record.variables['J7']:.4f}"))
-            self.iter_table.setItem(idx, 3, QTableWidgetItem(f"{record.variables['C9']:.4f}"))
-            self.iter_table.setItem(idx, 4, QTableWidgetItem(f"{record.variables['J94']:.4f}"))
-            self.iter_table.setItem(idx, 5, QTableWidgetItem(f"{record.objective:.4f}"))
-            self.iter_table.setItem(idx, 6, QTableWidgetItem(f"{record.outputs['J76']:.4f}"))
-            self.iter_table.setItem(idx, 7, QTableWidgetItem(f"{record.outputs['J77']:.4f}"))
-            xs.append(record.iteration)
-            ys.append(record.objective)
-        if xs:
-            self.iter_plot.plot(xs, ys, "J204 по итерациям", "Итерация", "J204")
-
-    def _update_profile_plot(self, values: Dict[str, float], percent: float = 10.0, points: int = 41) -> None:
-        final_values = values
-        variables = ["C7", "J7", "C9", "J94"]
-        sweep = [((i - (points // 2)) / (points // 2)) * percent for i in range(points)]
-        series: Dict[str, List[float]] = {}
-        for var in variables:
-            ys = []
-            for delta in sweep:
-                current = dict(final_values)
-                current[var] = final_values[var] * (1 + delta / 100.0)
-                ys.append(self.engine.compute(current).key_outputs["J204"])
-            series[var] = ys
-        self.profile_plot.plot_multi(series, sweep)
-
-    def _update_all_cells(self, values: Dict[str, float]) -> None:
-        self.all_cells_table.setRowCount(0)
-        for idx, (cell, value) in enumerate(sorted(values.items())):
-            self.all_cells_table.insertRow(idx)
-            self.all_cells_table.setItem(idx, 0, QTableWidgetItem(cell))
-            self.all_cells_table.setItem(idx, 1, QTableWidgetItem(f"{value:.4f}"))
-        self.formula_table.setRowCount(0)
-        for idx, (cell, formula) in enumerate(sorted(self.formulas_by_cell.items())):
-            self.formula_table.insertRow(idx)
-            self.formula_table.setItem(idx, 0, QTableWidgetItem(cell))
-            self.formula_table.setItem(idx, 1, QTableWidgetItem(formula.formula))
-
-    def _update_dependency_chain(self, cell: str) -> None:
-        graph = build_dependency_graph({c: f.formula for c, f in self.formulas_by_cell.items()})
-        deps = dependency_chain(graph, cell)
-        self.dependency_table.setRowCount(0)
-        for idx, dep in enumerate(deps):
-            self.dependency_table.insertRow(idx)
-            self.dependency_table.setItem(idx, 0, QTableWidgetItem(dep))
 
     def _save_project(self, path: Path, optimization=None) -> None:
         compute_result = self.engine.compute(self.values)
@@ -749,7 +804,7 @@ class MainWindow(QMainWindow):
             modified_at="",
             version=VERSION,
             inputs=self.values,
-            ui_options={"theme": self.state.theme, "mode": self.state.mode},
+            ui_options={"theme": self.state.theme},
             results={"key_outputs": compute_result.key_outputs, "table": compute_result.table_rows},
             optimization=optimization.history.to_dict() if optimization else {},
             notes=self.state.notes,

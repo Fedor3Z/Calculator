@@ -1,41 +1,43 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from pathlib import Path
+import sys
+from typing import Dict, List, Optional
 
-from openpyxl import Workbook
+from openpyxl import load_workbook
 
 from core.model import InputCell, normalize_cell
 from solver.optimizer import ConstraintStatus
+
+
+def _template_path() -> Path:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    return base / "assets" / "excel_template.xlsx"
 
 
 def export_report(
     path: str,
     inputs: List[InputCell],
     values: Dict[str, float],
-    key_outputs: Dict[str, float],
-    formulas: Dict[str, str],
-    constraints: List[ConstraintStatus],
+    key_outputs: Optional[Dict[str, float]] = None,
+    formulas: Optional[Dict[str, str]] = None,
+    constraints: Optional[List[ConstraintStatus]] = None,
 ) -> None:
-    wb = Workbook()
-    ws_inputs = wb.active
-    ws_inputs.title = "Inputs"
-    ws_inputs.append(["Name", "Cell", "Value", "Unit", "Description"])
+    """Экспорт в XLSX в виде исходного Excel-калькулятора.
+
+    Мы берём Excel-шаблон (excel_template.xlsx), записываем в него входные ячейки,
+    а формулы и оформление остаются как в оригинале.
+
+    Параметры key_outputs/formulas/constraints оставлены для обратной совместимости
+    с вызовами из интерфейса.
+    """
+    wb = load_workbook(_template_path())
+    ws = wb.active
+
     for item in inputs:
-        ws_inputs.append([item.name, item.cell, values.get(normalize_cell(item.cell)), item.unit, item.description])
-
-    ws_outputs = wb.create_sheet("Key Outputs")
-    ws_outputs.append(["Name", "Cell", "Value", "Unit", "Notes"])
-    for cell, value in key_outputs.items():
-        ws_outputs.append([cell, cell, value, "", ""])
-
-    ws_formulas = wb.create_sheet("Intermediates")
-    ws_formulas.append(["Cell", "Value", "Formula"])
-    for cell, formula in formulas.items():
-        ws_formulas.append([cell, values.get(cell), formula])
-
-    ws_constraints = wb.create_sheet("Constraints")
-    ws_constraints.append(["Constraint", "Violation", "Status"])
-    for item in constraints:
-        ws_constraints.append([item.name, item.violation, item.status])
+        cell = item.cell
+        key = normalize_cell(cell)
+        if key in values and values[key] is not None:
+            ws[cell].value = float(values[key])
 
     wb.save(path)

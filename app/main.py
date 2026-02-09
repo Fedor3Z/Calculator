@@ -11,7 +11,8 @@ from core.model import SchemaLoader
 
 def main() -> int:
     app = QApplication(sys.argv)
-    schema_path = Path(__file__).resolve().parent.parent / "assets" / "kinematics_calc_extracted.json"
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    schema_path = base / "assets" / "kinematics_calc_extracted.json"
     schema = SchemaLoader(schema_path).load()
     window = MainWindow(schema)
     window.show()

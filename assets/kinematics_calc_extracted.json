@@ -258,19 +258,60 @@
       "default": 25700.0,
       "unit": "Н"
     },
-{ "cell": "E195", "name": "Нижний предел C7", "default": 185.0, "unit": "" },
-{ "cell": "E197", "name": "Верхний предел C7", "default": 475.0, "unit": "" },
-
-{ "cell": "E191", "name": "Нижний предел C9", "default": 500.0, "unit": "" },
-{ "cell": "E193", "name": "Верхний предел C9", "default": 4000.0, "unit": "" },
-
-{ "cell": "J191", "name": "Нижний предел J7", "default": 185.0, "unit": "" },
-{ "cell": "J193", "name": "Верхний предел J7", "default": 475.0, "unit": "" },
-
-{ "cell": "J195", "name": "Нижний предел J94", "default": 1.0, "unit": "" },
-{ "cell": "J197", "name": "Верхний предел J94", "default": 4000.0, "unit": "" },
-
-{ "cell": "J187", "name": "Tогранич", "default": 7500.0, "unit": "" }
+    {
+      "cell": "E195",
+      "name": "D1min =",
+      "default": 185.0,
+      "unit": "мм"
+    },
+    {
+      "cell": "E197",
+      "name": "D1max =",
+      "default": 475.0,
+      "unit": "мм"
+    },
+    {
+      "cell": "E191",
+      "name": "n1min =",
+      "default": 500.0,
+      "unit": "об/мин"
+    },
+    {
+      "cell": "E193",
+      "name": "n1max =",
+      "default": 4000.0,
+      "unit": "об/мин"
+    },
+    {
+      "cell": "J191",
+      "name": "D2min =",
+      "default": 185.0,
+      "unit": "мм"
+    },
+    {
+      "cell": "J193",
+      "name": "D2max =",
+      "default": 475.0,
+      "unit": "мм"
+    },
+    {
+      "cell": "J195",
+      "name": "Fpmin =",
+      "default": 1.0,
+      "unit": "Н"
+    },
+    {
+      "cell": "J197",
+      "name": "Fpmax =",
+      "default": 4000.0,
+      "unit": "Н"
+    },
+    {
+      "cell": "J187",
+      "name": "Tогранич =",
+      "default": 7500.0,
+      "unit": ""
+    }
   ],
   "formulas": [
     {
@@ -874,7 +915,11 @@
         "lhs": "J7",
         "rhs": "J191"
       },
-      {"type":"le","lhs":"J76","rhs":"J77"},
+      {
+        "type": "le",
+        "lhs": "J76",
+        "rhs": "J77"
+      },
       {
         "type": "le",
         "lhs": "J82",

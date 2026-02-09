@@ -1,16 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.building.datastruct import Tree
 
 block_cipher = None
 
 hiddenimports = collect_submodules('scipy') + collect_submodules('matplotlib')
 
+# Bundle all UI assets (json maps, formulas, Excel template, etc.)
+assets_tree = Tree('assets', prefix='assets')
+
 a = Analysis(
     ['app/main.py'],
     pathex=['.'],
     binaries=[],
-    datas=[('assets/kinematics_calc_extracted.json', 'assets')],
+    datas=[assets_tree],
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
