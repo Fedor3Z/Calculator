@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setWidget(inputs_widget)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # необязательно, но удобно
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
     splitter.addWidget(scroll)
     splitter.addWidget(self._build_outputs_panel())
