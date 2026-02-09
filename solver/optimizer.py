@@ -115,14 +115,24 @@ class Optimizer:
         return updated
 
     def _build_bounds(self, values: Dict[str, float]) -> List[Tuple[float, float]]:
-        # values может содержать только вводы. Границы (E195/E197/J191/...) часто вычисляются.
-        computed = self.engine.compute(values).values  # все ячейки после расчёта
+        computed = self.engine.compute(values).values
+
+        def get(cell: str) -> float:
+            cell = normalize_cell(cell)
+            if cell in values:
+                return float(values[cell])
+            if cell in computed:
+                return float(computed[cell])
+            defaults = self.engine.default_values()
+            if cell in defaults:
+                return float(defaults[cell])
+            raise KeyError(cell)
 
         bounds_map = {
-            "C7": (float(computed["E195"]), float(computed["E197"])),
-            "J7": (float(computed["J191"]), float(computed["J193"])),
-            "C9": (float(computed["E191"]), float(computed["E193"])),
-            "J94": (float(computed["J195"]), float(computed["J197"])),
+            "C7": (get("E195"), get("E197")),
+            "J7": (get("J191"), get("J193")),
+            "C9": (get("E191"), get("E193")),
+            "J94": (get("J195"), get("J197")),
         }
 
         bounds: List[Tuple[float, float]] = []
@@ -157,7 +167,7 @@ class Optimizer:
                 constraints.append({"type": "ineq", "fun": func})
         return constraints
 
-    def _resolve_value(self, expr: str, values: Dict[str, float]) -> float:
+    def _resolve_value(self, expr: str, values: Dict[str, float], computed: Dict[str, float] | None = None) -> float:
         expr = str(expr)
         try:
             return float(expr)
@@ -168,8 +178,17 @@ class Optimizer:
         if key in values:
             return float(values[key])
 
-        computed = self.engine.compute(values).values
-        return float(computed[key])
+        if computed is None:
+            computed = self.engine.compute(values).values
+
+        if key in computed:
+            return float(computed[key])
+
+        defaults = self.engine.default_values()
+        if key in defaults:
+            return float(defaults[key])
+
+        raise KeyError(key)
 
     def _constraint_violations(self, values: Dict[str, float]) -> Tuple[Dict[str, float], List[ConstraintStatus]]:
         violations: Dict[str, float] = {}
@@ -177,8 +196,8 @@ class Optimizer:
         computed = self.engine.compute(values).values
         eps = 1e-6
         for idx, constraint in enumerate(self.schema.solver.constraints, start=1):
-            lhs_val = self._resolve_value(constraint.lhs, computed)
-            rhs_val = self._resolve_value(constraint.rhs, computed)
+            lhs_val = self._resolve_value(constraint.lhs, values, computed)
+            rhs_val = self._resolve_value(constraint.rhs, values, computed)
             name = f"C{idx}: {constraint.lhs} {constraint.type} {constraint.rhs}"
             if constraint.type == "le":
                 violation = max(0.0, (lhs_val - rhs_val) / max(abs(rhs_val), eps))
