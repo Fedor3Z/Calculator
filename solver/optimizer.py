@@ -133,12 +133,7 @@ class Optimizer:
             lo, hi = hi, lo
         bounds.append((lo, hi))
     return bounds
-
-        }
-        for var in self.variables:
-            bounds.append(bounds_map[var])
-        return bounds
-
+        
     def _build_constraints(self, values: Dict[str, float], soft: bool) -> List[Dict[str, object]]:
         if soft:
             return []
