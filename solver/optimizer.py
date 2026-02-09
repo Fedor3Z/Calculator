@@ -57,35 +57,60 @@ class Optimizer:
     ) -> OptimizationResult:
         bounds = self._build_bounds(base_values)
         constraints = self._build_constraints(base_values, soft=soft)
-
+    
+        # Порог допустимости: strict = 1e-4, soft = 5%
+        tol = 0.05 if soft else 0.0001
+    
+        best_values: Dict[str, float] | None = None
+        best_obj: float = float("inf")
+        best_iter: int | None = None
+    
+        def max_violation(violations: Dict[str, float]) -> float:
+            return max(violations.values(), default=0.0)
+    
         def objective(x: np.ndarray) -> float:
             current = self._update_values(base_values, x)
             result = self.engine.compute(current)
-            value = result.key_outputs["J204"]
+            value = float(result.key_outputs["J204"])
             penalty = 0.0
             if soft:
                 penalties, _ = self._constraint_violations(current)
+                # штрафуем нарушения квадратично
                 penalty = sum(1000.0 * v**2 for v in penalties.values())
             return value + penalty
-
+    
         def callback(x: np.ndarray) -> None:
+            nonlocal best_values, best_obj, best_iter
+    
             current = self._update_values(base_values, x)
             result = self.engine.compute(current)
+    
             violations, _ = self._constraint_violations(current)
+            mv = max_violation(violations)
+    
+            # пишем историю (как было)
             history.add(
                 IterationRecord(
                     iteration=len(history.records) + 1,
                     variables={var: current[var] for var in self.variables},
-                    objective=result.key_outputs["J204"],
+                    objective=float(result.key_outputs["J204"]),
                     outputs={
-                        **{key: result.key_outputs[key] for key in KEY_OUTPUTS},
-                        "J76": result.values["J76"],
-                        "J77": result.values["J77"],
+                        **{key: float(result.key_outputs[key]) for key in KEY_OUTPUTS},
+                        "J76": float(result.values["J76"]),
+                        "J77": float(result.values["J77"]),
                     },
                     violations=violations,
                 )
             )
-
+    
+            # сохраняем лучшее ДОПУСТИМОЕ решение (min J204)
+            if mv <= tol:
+                j204 = float(result.key_outputs["J204"])
+                if j204 < best_obj:
+                    best_obj = j204
+                    best_values = dict(current)  # копия
+                    best_iter = len(history.records)
+    
         result = minimize(
             objective,
             initial,
@@ -94,16 +119,50 @@ class Optimizer:
             constraints=constraints,
             callback=callback,
         )
+    
+        # Финальная точка оптимизатора
         final_values = self._update_values(base_values, result.x)
-        violations, statuses = self._constraint_violations(final_values)
-        acceptable = all(v <= 0.05 for v in violations.values())
-        success = bool(result.success) and (acceptable if soft else result.success)
+        final_violations, final_statuses = self._constraint_violations(final_values)
+        final_mv = max_violation(final_violations)
+        final_obj = float(self.engine.compute(final_values).key_outputs["J204"])
+    
+        # Выбираем, что возвращать: best-feasible или final
+        chosen_values = final_values
+        chosen_statuses = final_statuses
+        chosen_obj = final_obj
+        chosen_mv = final_mv
+        chosen_note = ""
+    
+        if best_values is not None:
+            best_violations, best_statuses = self._constraint_violations(best_values)
+            best_mv = max_violation(best_violations)
+    
+            # best должен быть реально допустимым по текущему режиму
+            if best_mv <= tol:
+                # выбираем меньший J204
+                if best_obj < chosen_obj:
+                    chosen_values = best_values
+                    chosen_statuses = best_statuses
+                    chosen_obj = best_obj
+                    chosen_mv = best_mv
+                    chosen_note = f" (лучшее допустимое: итерация {best_iter})"
+    
+        # Определяем успех
+        # strict: считаем успехом, если есть допустимая точка (chosen_mv <= 1e-4)
+        # soft: успех, если chosen_mv <= 5%
+        if soft:
+            success = chosen_mv <= 0.05
+        else:
+            success = chosen_mv <= 0.0001
+    
+        message = str(result.message) + chosen_note
+    
         return OptimizationResult(
             success=success,
-            message=result.message,
-            values=final_values,
-            objective=self.engine.compute(final_values).key_outputs["J204"],
-            constraints=statuses,
+            message=message,
+            values=chosen_values,
+            objective=chosen_obj,
+            constraints=chosen_statuses,
             history=history,
             stage="soft" if soft else "strict",
         )
