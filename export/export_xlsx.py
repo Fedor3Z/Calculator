@@ -21,7 +21,7 @@ def export_report(
     ws_inputs.title = "Inputs"
     ws_inputs.append(["Name", "Cell", "Value", "Unit", "Description"])
     for item in inputs:
-        ws_inputs.append([item.name, item.cell, values.get(item.cell), item.unit, item.description])
+        ws_inputs.append([item.name, item.cell, values.get(normalize_cell(item.cell)), item.unit, item.description])
 
     ws_outputs = wb.create_sheet("Key Outputs")
     ws_outputs.append(["Name", "Cell", "Value", "Unit", "Notes"])
