@@ -310,7 +310,7 @@
       "cell": "J187",
       "name": "Tогранич =",
       "default": 7500.0,
-      "unit": ""
+      "unit": "H"
     }
   ],
   "formulas": [
